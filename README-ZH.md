@@ -42,7 +42,7 @@ DSH Web UI 的输入框增强插件。它在 Host 侧建立当前工作区的文
 需要 DSH `0.1.0-rc.6` 或兼容的 DSH Web profile。通过 DSH 官方 profile 插件流程安装：
 
 ```bash
-dsh plugin --profile web add dsh-input-plus
+dsh plugin --profile web add https://github.com/WhitePlusMS/dsh-input-plus/archive/refs/tags/v0.0.1.tar.gz
 ```
 
 ## 配置
