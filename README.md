@@ -6,6 +6,8 @@ An input composer enhancement plugin for the DSH Web UI. On the Host side, it bu
 
 ![File reference candidate menu](docs/image1.png)
 
+![Input history menu](docs/image2.png)
+
 ## Features
 
 ### `@` file and directory path selection
