@@ -46,6 +46,20 @@ diagnostic.
 - Rust-free, dependency-light: Host runtime deps are `@deepseek-ai/schemastery`
   only; DSH packages are peer/dev dependencies.
 
+### Verified
+
+- The bundle was installed into a real DSH `web` profile via `dsh plugin add`
+  (local `file:` dependency + `dsh.profile.bundles`), booted, and the Web
+  client half was confirmed loaded: `/plugins/dsh-input-plus/client.js`
+  returns the bundle and its `@` source registers through `ctx.inputTriggers`
+  (`[dsh-input-plus] @ file reference source registered ...` in the console)
+  and lists workspace candidates in the composer. `dsh.client.inject` is
+  declared to match the bundle factory so the loader waits for the
+  `inputTriggers` service before `apply` registers the source.
+- By design, input-history/double-Escape remain seam-gated pure logic on rc.6
+  (no public additive composer keyboard seam) and print a degradation
+  diagnostic; they auto-enable when a seam exists.
+
 ### Security
 
 - Path traversal (`..`), absolute paths, NUL bytes, and symlink escapes are

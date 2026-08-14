@@ -3,9 +3,10 @@
 ## 当前状态（2026-08-14，实现完成）
 
 - 已完成独立发布仓库的实现骨架与全部源码：Host half（`src/index.ts` + `src/host/*`）、Web Client half（`src/client/*`）、共享契约（`src/contract.ts`）、测试（`src/**/*.test.ts`）与构建脚本（`scripts/`）。
-- 已初始化 Git 仓库（`git init -b main`），尚未生成提交与远程仓库。
+- 已初始化 Git 仓库（分支 `main`）并已有提交；尚未配置远程仓库。/远程仓库待用户设置。
 - 单元测试全部通过（52/52）；Host 与 Client 均可构建（`lib/` 输出；Client 为进程内 bundler 生成的 `lib/client.js`）。
-- 仍**未完成**：真实 profile 打包安装 + 真实 DSH WebUI 加载验证（08/09 集成与发布门禁）。键盘类能力（历史/双 Escape）在 rc.6 基线仅为已测纯逻辑，未接实时键盘缝。
+- **已实机验证**：通过 `dsh plugin add`（`file:` 依赖 + `dsh.profile.bundles`）装入真实 `web` profile 并启动；Web Client 半部 `/plugins/dsh-input-plus/client.js` 200 返回，`@` 源经 `ctx.inputTriggers` 注册成功并在组合框列出 workspace 候选（`@` 生效）。`dsh.client.inject` 与 bundle factory 对齐，Loader 等 `inputTriggers` 就绪后再 apply。
+- 键盘类能力（输入历史/双 Escape）在 rc.6 基线仍为已测纯逻辑 + 降级诊断，未接实时键盘缝（rc.6 组合框键盘面为单席位，不替换官方组合框）。
 - DSH 不属于本仓库；DSH 只作为外部宿主和兼容性验证环境。
 - 不复制、软链接或修改 Harness 源码，不把插件目录放入 Harness checkout 内作为发布依赖。
 

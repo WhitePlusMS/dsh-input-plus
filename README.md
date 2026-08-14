@@ -13,7 +13,7 @@ modify the DSH harness; DSH is the external host and compatibility baseline.
 
 | # | Feature | Status (DSH `0.1.0-rc.6`) |
 |---|---------|---------------------------|
-| 1 | `@` file / directory reference | ✅ **Live** (additive official seam) |
+| 1 | `@` file / directory reference | ✅ **Live** (additive official seam; verified in a real Installed profile + WebUI) |
 | 2 | Session input history (`↑` / `↓`) | 🔶 **Pure logic, unit-tested** — not wired to a live keyboard seam in rc.6 |
 | 3 | Double-`Escape` clears the draft | 🔶 **Pure logic, unit-tested** — as above |
 
@@ -146,10 +146,17 @@ research/ wayfinder/ .scratch/   Planning, official-surface research, implementa
 - Verified baseline: **DSH `0.1.0-rc.6`** (npm/npx runtime). Observed
   extension seams: `ctx.inputTriggers` (additive), `ctx.settings`,
   `ctx.webServer`, `agent/pre-step`.
-- **Not yet verified:** a real bundle/profile install followed by loading in a
-  real DSH WebUI. That is the integration gate; until it is done, this README
-  must not be read as proof that an installed profile loads both halves in the
-  browser.
+- **Verified in a real installed profile + WebUI:** the bundle loads both
+  halves through the DSH bundle/profile path (`dsh plugin add <pkg>` →
+  `dsh.profile.bundles`); the Web client bundle is served
+  (`/plugins/dsh-input-plus/client.js`, 200) and its `@` source registers
+  through `ctx.inputTriggers` and lists workspace candidates (registration
+  confirmed via the client console log). This is what was previously the open
+  integration gate, and it is now exercised for the `@` feature.
+- **Not yet end-to-end verified:** the `agent/pre-step` reference injection
+  against a live send (compiled + unit-tested, but not yet asserted against a
+  real turn on the verified host), and the input-history / double-Escape
+  keyboard behaviors (seam-gated — see below).
 - The rc.6 composer keyboard seam is single-seat; input-history/double-Escape
   therefore degrade (with a diagnostic) rather than replace the composer.
 
