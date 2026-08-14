@@ -1,5 +1,7 @@
 # dsh-input-plus
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 [English README](README.md)
 
 DSH Web UI 的输入框增强插件。它在 Host 侧建立当前工作区的文件索引，在浏览器侧接入 DSH 官方的 `@` 输入触发器，让你可以在组合框中搜索并插入文件或目录路径。输入 `/h` 可以打开当前 Session 的历史问题候选菜单，方便复用以前的提问。

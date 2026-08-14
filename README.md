@@ -1,5 +1,7 @@
 # dsh-input-plus
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 [中文说明](README-ZH.md)
 
 An input composer enhancement plugin for the DSH Web UI. On the Host side, it builds an index of the active workspace. In the browser, it connects to DSH's official `@` input trigger so files and directories can be searched and inserted into the composer. Type `/h` to open a candidate menu of previous prompts from the current Session.
