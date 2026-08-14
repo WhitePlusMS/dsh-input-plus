@@ -21,7 +21,16 @@ import { basename, join, relative, resolve, sep } from 'node:path'
 import type { FileCandidate, RefErrorCode } from '../contract.js'
 
 export const DIR_MANIFEST_FILENAME = 'DIRECTORY.md'
-export const DEFAULT_IGNORED = new Set(['.git', 'node_modules', '.dsh', '.dsh-home'])
+export const DEFAULT_IGNORED = new Set([
+  // VCS / harness
+  '.git', '.dsh', '.dsh-home', '.svn', '.hg',
+  // dependencies + package managers
+  'node_modules', '.pnpm-store', '.npm', '.npm-cache', '.yarn', '.pnpm',
+  // build / test / coverage output
+  'dist', 'build', 'out', 'coverage', '.out-test', '.turbo', '.nx', '.cache',
+  // editor / OS artifacts
+  '.idea', '.vscode', '.DS_Store', 'Thumbs.db',
+])
 
 export interface WorkspaceIndexOptions {
   /** Absolute workspace root. */
@@ -255,7 +264,21 @@ export function searchCandidates(index: readonly FileCandidate[], query: string,
       return { c, score }
     })
     .filter((x): x is { c: FileCandidate; score: number } => x !== null)
-    .sort((a, b) => a.score - b.score || a.c.relative.localeCompare(b.c.relative))
+    .sort((a, b) => {
+      // Rank by match score first.
+      if (a.score !== b.score) return a.score - b.score
+      // At equal score prefer shallow over deep, and non-hidden over dot-prefixed
+      // (dot files / caches crowded out normal files on an empty query).
+      const aRel = a.c.relative
+      const bRel = b.c.relative
+      const aDot = aRel.startsWith('.')
+      const bDot = bRel.startsWith('.')
+      if (aDot !== bDot) return aDot ? 1 : -1
+      const aDepth = aRel.split('/').length
+      const bDepth = bRel.split('/').length
+      if (aDepth !== bDepth) return aDepth - bDepth
+      return aRel.localeCompare(bRel)
+    })
     .slice(0, limit)
     .map((x) => x.c)
   return scored

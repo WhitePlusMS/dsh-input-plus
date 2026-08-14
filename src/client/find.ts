@@ -21,7 +21,18 @@ export function rankFileCandidates(candidates: readonly FileCandidate[], query: 
       return { c, score }
     })
     .filter((x): x is { c: FileCandidate; score: number } => x !== null)
-    .sort((a, b) => a.score - b.score || a.c.relative.localeCompare(b.c.relative))
+    .sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score
+      const aRel = a.c.relative
+      const bRel = b.c.relative
+      const aDot = aRel.startsWith('.')
+      const bDot = bRel.startsWith('.')
+      if (aDot !== bDot) return aDot ? 1 : -1
+      const aDepth = aRel.split('/').length
+      const bDepth = bRel.split('/').length
+      if (aDepth !== bDepth) return aDepth - bDepth
+      return aRel.localeCompare(bRel)
+    })
     .map((x) => x.c)
     .slice(0, limit)
 }
