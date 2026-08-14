@@ -23,3 +23,11 @@ Thumbs.db
 # Scratch planning (implementation tickets reference this, but it is local
 # working material, not release content)
 .scratch/
+
+# Development planning material — intentionally NOT tracked. The released
+# repository is the source + publish docs (src/, scripts/, README, CHANGELOG,
+# LICENSE, cordis.patch.yml, package.json). research/wayfinder/prototype were
+# the development-time plans; they are never tracked.
+research/
+wayfinder/
+prototype/
