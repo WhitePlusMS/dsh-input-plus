@@ -57,6 +57,7 @@ export function apply(ctx: Context): void {
     const source = createFileInputSource({ reader: deps })
     // registerSource returns the disposer; ctx.effect keeps it on the Fiber.
     ctx.effect(() => inputTriggers.registerSource(source))
+    console.info('[dsh-input-plus] @ file reference source registered (ctx.inputTriggers present).')
   } else {
     console.warn('[dsh-input-plus] capability degraded: @ file reference — official input-trigger service not present.')
   }
