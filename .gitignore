@@ -1,9 +1,10 @@
 # Dependencies
 node_modules/
 
-# Build output (dist is published, not committed)
+# Build output
 dist/
-lib/
+# lib/ is committed because GitHub tag installs consume generated artifacts
+# directly and do not run npm prepack.
 .out-test/
 *.tgz
 .npm-cache/

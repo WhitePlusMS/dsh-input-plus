@@ -48,6 +48,11 @@ Requires DSH `0.1.0-rc.6` or a compatible DSH Web profile. Install through the o
 dsh plugin --profile web add https://github.com/WhitePlusMS/dsh-input-plus/archive/refs/tags/v0.0.1.tar.gz
 ```
 
+GitHub tag installation consumes the committed `lib/` Host and Client artifacts directly.
+Before creating or updating an installation tag, run `pnpm run build` and include the
+generated `lib/` directory in the commit; installing a source-only archive will fail
+because the package entry points resolve to `lib/index.js` and `lib/client.js`.
+
 ## Configuration
 
 The plugin registers the `input-plus` settings namespace. The options used by workspace indexing and path resolution are:

@@ -49,6 +49,10 @@ DSH Web UI 的输入框增强插件。它在 Host 侧建立当前工作区的文
 dsh plugin --profile web add https://github.com/WhitePlusMS/dsh-input-plus/archive/refs/tags/v0.0.1.tar.gz
 ```
 
+通过 GitHub tag 安装时会直接使用提交中的 `lib/` Host 和 Client 构建产物。
+创建或更新安装 tag 前必须先执行 `pnpm run build`，并将生成的 `lib/` 目录提交到 Git；
+只包含源码的归档会因包入口指向 `lib/index.js` 和 `lib/client.js` 而启动失败。
+
 ## 配置
 
 插件注册的设置命名空间为 `input-plus`。当前实际参与工作区索引和路径解析的配置如下：
