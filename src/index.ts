@@ -1,12 +1,12 @@
 /**
  * dsh-input-plus Host half — a static Cordis plugin.
  *
- * Responsibilities (Host-owned, per research/dsh-input-plus-file-reference.md):
+ * Responsibilities (Host-owned):
  * - expose the `@` candidate index to the browser half over same-origin HTTP
  *   routes (only `relative` + `kind` ever cross the wire);
- * - register per-session settings (master switch, size limits);
- * - inject resolved file contents / directory manifests at `agent/pre-step`,
- *   re-validating every `@` token through the Host safety layer at send time.
+ * - register candidate-index settings and a path-validation route;
+ * - leave selected `@` references as plain user text so the model can inspect
+ *   them with its native workspace tools.
  *
  * Every side effect is Fiber-owned (`ctx.effect` / `ctx.on` disposers), so
  * stop/unload removes routes, settings and listeners.
@@ -14,13 +14,11 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
-import type { UserMessage } from '@deepseek-ai/dsh-session'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { normalizeRoot, indexWorkspace, resolveReference, searchCandidates } from './host/files.js'
-import { scanMentions, uniqueMentions, resolveToBlocks } from './host/mention.js'
+import { readGitChangedFiles } from './host/git.js'
 import { createWorkspaceResolver } from './host/workspace.js'
 import { buildSchema, DEFAULTS, SETTINGS_NAMESPACE, type InputPlusSettings } from './host/settings.js'
 import {
@@ -35,7 +33,6 @@ import {
 // `ctx.webServer` / `ctx.agents` (and the settings face) to the Context.
 import '@deepseek-ai/dsh-host-webserver'
 import '@deepseek-ai/dsh-agent'
-import '@deepseek-ai/dsh-session'
 
 const NAMESPACE = settingsNamespace(SETTINGS_NAMESPACE)
 
@@ -57,9 +54,7 @@ export default {
       const s = scope?.get()
       return {
         enabled: s?.enabled ?? DEFAULTS.enabled,
-        maxFileBytes: s?.maxFileBytes ?? DEFAULTS.maxFileBytes,
-        maxDirBytes: s?.maxDirBytes ?? DEFAULTS.maxDirBytes,
-        maxManifestDepth: s?.maxManifestDepth ?? DEFAULTS.maxManifestDepth,
+        maxIndexDepth: s?.maxIndexDepth ?? DEFAULTS.maxIndexDepth,
         maxIndexEntries: s?.maxIndexEntries ?? DEFAULTS.maxIndexEntries,
         referenceRoot: s?.referenceRoot ?? DEFAULTS.referenceRoot,
       }
@@ -81,6 +76,16 @@ export default {
       }
     }
 
+    const gitCache = new Map<string, { readonly expiresAt: number; readonly files: ReadonlySet<string> }>()
+    const changedFilesFor = async (root: string): Promise<ReadonlySet<string>> => {
+      const now = Date.now()
+      const cached = gitCache.get(root)
+      if (cached !== undefined && cached.expiresAt > now) return cached.files
+      const files = await readGitChangedFiles(root)
+      gitCache.set(root, { expiresAt: now + 1500, files })
+      return files
+    }
+
     ctx.effect(() => ctx.webServer.register({
       kind: 'exact',
       path: ROUTE_CANDIDATES,
@@ -97,12 +102,13 @@ export default {
         try {
           const index = await indexWorkspace({
             root: normalizeRoot(root),
-            maxFileBytes: cfg().maxFileBytes,
-            maxDirBytes: cfg().maxDirBytes,
             maxIndexEntries: cfg().maxIndexEntries,
-            maxDepth: cfg().maxManifestDepth,
+            maxDepth: cfg().maxIndexDepth,
           })
-          const candidates = searchCandidates(index, q, cfg().maxIndexEntries)
+          const changed = await changedFilesFor(normalizeRoot(root))
+          const decorated = index.map((candidate) =>
+            changed.has(candidate.relative) ? { ...candidate, modified: true } : candidate)
+          const candidates = searchCandidates(decorated, q, cfg().maxIndexEntries)
           json(res, 200, { ok: true, candidates } satisfies CandidatesEnvelope)
         } catch {
           json(res, 200, { ok: false, error: 'INDEX_FAILED', candidates: [] } satisfies CandidatesEnvelope)
@@ -135,60 +141,5 @@ export default {
       },
     }))
 
-    // --- pre-step injection ---------------------------------------------------
-    // Text projection of a message's content blocks (concatenates text blocks).
-    const textOf = (content: readonly ContentBlock[]): string =>
-      content
-        .map((b) => (b && typeof b === 'object' && 'type' in b && b.type === 'text' ? (b as { text: string }).text : ''))
-        .join('\n')
-
-    ctx.on('agent/created', (ev: { agent: Agent }) => {
-      const agent = ev.agent
-      agent.ctx.on(
-        'agent/pre-step',
-        async (
-          p: { agent: Agent; messages: UserMessage[] },
-          next: () => Promise<PreStepDecision>,
-        ): Promise<PreStepDecision> => {
-          const opts = cfg()
-          if (!opts.enabled) return next()
-          const root = resolver.resolve(p.agent)
-          if (!root) return next()
-
-          const last = p.messages[p.messages.length - 1]
-          if (!last || last.role !== 'user') return next()
-          const draftText = textOf(last.content)
-          if (draftText === '') return next()
-
-          const mentions = uniqueMentions(scanMentions(draftText))
-          if (mentions.length === 0) return next()
-
-          const { blocks, errors } = await resolveToBlocks(mentions.map((m) => m.rel), {
-            root: normalizeRoot(root),
-            limits: {
-              maxFileBytes: opts.maxFileBytes,
-              maxDirBytes: opts.maxDirBytes,
-              maxManifestDepth: opts.maxManifestDepth,
-            },
-          })
-          if (blocks.length === 0) return next()
-
-          const injected = blocks.map((b) => `${b.heading}\n\n${b.body}`).join('\n\n')
-          const errorsText = errors
-            .map((e) => e.message)
-            .filter((x): x is string => Boolean(x))
-            .join('\n')
-          const injectionBody = errorsText
-            ? `${injected}\n\n[reference errors]\n${errorsText}`
-            : injected
-
-          const nextMessages = p.messages.map((m, i) =>
-            i === p.messages.length - 1
-              ? { ...m, content: [...m.content, { type: 'text', text: injectionBody }] as ContentBlock[] }
-              : m)
-          return { kind: 'enter', messages: nextMessages }
-        },
-      )
-    })
   },
 }

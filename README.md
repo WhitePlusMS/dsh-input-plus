@@ -1,165 +1,257 @@
 # dsh-input-plus
 
-> DSH 输入框强化 — input-box enhancements for the DeepSeek Harness (DSH) Web UI.
+[中文说明](README-ZH.md)
 
-A small **bundle plugin** for DSH that lives in the session workspace and ships
-as a publishable npm package. It is composed of a Host half running in the DSH
-Node process and a Web Client half loaded by the browser.
+Workspace path references and small composer enhancements for the DeepSeek
+Harness web interface.
 
-This is an independent, self-contained repository. It does **not** vendor or
-modify the DSH harness; DSH is the external host and compatibility baseline.
+`dsh-input-plus` is an independent DSH bundle plugin with two parts:
+
+- **Host half** — indexes the active workspace, enforces path safety, and serves
+  the candidate and path-resolution endpoints.
+- **Web Client half** — adds the official `@` path picker, file icons, `/h`
+  input history, and a concise composer status dock.
+
+The plugin does not copy, modify, or replace the DSH Harness. It keeps path
+references as links and never injects referenced file contents into a message.
+
+![File reference picker](docs/image1.png)
 
 ## Features
 
-| # | Feature | Status (DSH `0.1.0-rc.6`) |
-|---|---------|---------------------------|
-| 1 | `@` file / directory reference | ✅ **Live** (additive official seam; verified in a real Installed profile + WebUI) |
-| 2 | Session input history (`↑` / `↓`) | 🔶 **Pure logic, unit-tested** — not wired to a live keyboard seam in rc.6 |
-| 3 | Double-`Escape` clears the draft | 🔶 **Pure logic, unit-tested** — as above |
+### `@` file and directory references
 
-### 1. `@` file / directory reference
+Type `@` in the DSH composer and search by file name, directory name, or path
+segments. Selecting a result leaves a plain path reference in the draft:
 
-Type `@…` in the composer; the browser half lists workspace-relative files and
-directories through the official input-trigger pipeline. At send time the Host
-re-validates every `@` token against a path-safety layer and injects:
-
-- **file** → its text contents;
-- **directory** → a bounded manifest (never the directory contents).
-
-References resolve against the session workspace (`session.header.cwd`) unless
-overridden by the `referenceRoot` setting.
-
-### 2 & 3. Input history + double-Escape (seam-gated)
-
-The complete, deterministic state machines for session input history and the
-double-Escape clear gesture ship in this package and are fully unit-tested
-(52 tests green). They are **not** wired to a live keyboard seam on the rc.6
-baseline, because rc.6 composes the composer keyboard command face only inside
-the single-seat composer bar — and this plugin deliberately does not take that
-seat (it would replace the whole composer). The browser half detects the gap
-and prints one actionable diagnostic; the machines auto-enable on a host that
-exposes an additive seam (`wireKeyboard`).
-
-> **Honesty note:** until bundle/profile install is verified end-to-end on a
-> real DSH WebUI, treat the keyboard features as "unit-tested machines with a
-> documented integration gap", not as a live browser behavior. See
-> [Compatibility](#compatibility).
-
-## Requirements
-
-- DSH `0.1.0-rc.6` (npm runtime baseline — see `research/dsh-input-plus-compatibility.md`)
-- Node.js 18+ (development: build/test)
-- pnpm (development)
-
-## Install
-
-Install is done through DSH's official plugin/profile flow (the package is a
-**bundle plugin** mounted at the profile level, not a dynamic sandbox plugin):
-
-```bash
-# from inside a DSH profile directory
-dsh plugin --profile <profile> add dsh-input-plus
+```text
+@src/contract.ts
 ```
 
-Because the package is composed of both a Host bundle and a Web Client bundle,
-the same verification steps apply as for any DSH bundle/profile install. Mount
-and configuration happen through DSH's own plugin manifest handling.
+The reference is not opened or expanded when the message is sent. If the agent
+needs the target, it can inspect the path with the native workspace tools in
+the current Session.
 
-> **Compatibility:** this release pins its promises to the rc.6 baseline and
-> the official extension seams verified in `research/`. Bundle/profile install
-> and real WebUI loading are the target of the integration gate; if a surface
-> is missing on the host it is detected and degraded with a diagnostic rather
-> than silently claimed.
+Directory references can be followed by an instruction:
 
-## Configuration
+```text
+@src Find the code responsible for candidate ranking
+```
 
-A settings namespace `input-plus` is registered through the official
-`ctx.settings` pipeline:
+The official DSH input-trigger pipeline owns the candidate menu, focus, and
+write-back behavior. This plugin does not replace the official textarea,
+send button, or candidate menu, and it does not override native arrow-key
+behavior.
 
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `enabled` | `true` | Master switch; off disables all behavior. |
-| `maxFileBytes` | `524288` (512 KiB) | Max bytes for one referenced text file. |
-| `maxDirBytes` | `131072` (128 KiB) | Max total bytes for a directory manifest. |
-| `maxManifestDepth` | `3` | Directory manifest depth cap. |
-| `maxIndexEntries` | `200` | Max candidate rows served per search. |
-| `referenceRoot` | `''` | Optional absolute reference-root override; empty = session workspace. |
+### `/h` and `/history` input history
+
+Type `/h` or `/history` to open the history candidates through DSH's official
+`/` input-trigger source. You can add a search term:
+
+```text
+/h Windows
+```
+
+History entries are ordered by recent use. Each row uses a non-emoji history
+symbol and a longer prompt preview that can occupy up to two lines. The
+source-scoped menu uses the available width of the composer. Selecting a row
+replaces `/h` or `/history` with the full prompt; it does not send the prompt.
+
+History is isolated per Session and keeps up to 50 entries. When a Session is
+opened, its currently loaded user and steering messages seed the list. New
+prompts are recorded only after the Host accepts `Session.prompt()`. Assistant
+replies, system messages, plugin content, failed sends, slash commands, and
+unsent drafts are excluded. No global keyboard listener is installed, so
+native arrow keys remain DSH behavior.
+
+If the console reports:
+
+```text
+[dsh-input-plus] /h and /history input history source registered.
+```
+
+but no **Input history** group appears, the source is loaded but the current
+Session has no available entries yet. Send a normal prompt successfully and
+open `/h` again. Switching to or reloading a Session with loaded history also
+seeds its available user prompts.
+
+### Search and ranking
+
+- Plain queries match candidate names first: exact names, prefixes, and
+  contained names rank ahead of parent-path matches.
+- Queries containing `/` match path segments in order. For example,
+  `src/view` can find `src/client/view.ts`, while `src/` continues within the
+  `src` directory.
+- Paths recently selected in the current Session are ranked first.
+- Git-modified paths rank ahead of unchanged paths at the same match level.
+- Shallower paths, ordinary names, and lexical order provide deterministic
+  tie-breaking.
+
+Each result shows the file or directory name first and its parent path below
+it. Built-in SVG icons distinguish directories, source files, data,
+configuration, archives, and other files. The picker does not use emoji icons.
+
+### Built-in file filters
+
+The index skips common version-control directories, dependency trees, build
+outputs, caches, and IDE metadata, including `.git`, `.svn`, `.hg`, `.dsh`,
+`node_modules`, `.pnpm`, `dist`, `build`, `coverage`, `.cache`, `.idea`, and
+`.vscode`.
+
+Common operating-system metadata files are also ignored with a
+case-insensitive basename match:
+
+- `desktop.ini`
+- `Thumbs.db`
+- `.DS_Store`
+
+The current implementation uses this built-in filter set. It does not expose
+an `ignoreDirs` option or a configurable file blacklist, keeping index behavior
+small and predictable.
+
+### Native composer status
+
+The plugin contributes a read-only line through DSH's official
+`conversation.composer.dock` seat. It appears only when useful state exists,
+such as:
+
+- the number of `@` references in the draft;
+- image attachments;
+- queued messages;
+- a running or submitting Session;
+- a closed Session.
+
+It does not display redundant workspace or draft-length metadata and does not
+change the official composer interaction.
 
 ## Usage
 
-In the composer:
+1. Type `@` in the composer.
+2. Search for a file, directory, or path segment and select a result.
+3. Continue typing the instruction after the inserted path.
+4. Send the message.
 
-1. Type `@` and keep typing a substring — the candidate menu lists workspace
-   files/directories.
-2. Pick an entry; the editor inserts a reference token.
-3. Send — the Host validates the token, reads the target, and injects the
-   file contents (or directory manifest) into the message context.
+To reuse an earlier prompt, type `/h` or `/history`, optionally add a search
+term, and select a result to put it back into the draft.
 
-Nothing is sent for a reference that fails validation; a per-feature error is
-surfaced instead.
+The sent message remains ordinary user text. The plugin does not inject
+`<file>` blocks, directory manifests, or file contents. PDFs, images, binary
+files, and text files follow the same path-reference flow; whether the agent
+can inspect a format depends on the native tools available in the Session.
+
+## Path and security boundaries
+
+- By default, the active workspace is resolved from
+  `agent.session.header.cwd`. The `referenceRoot` setting can override it with
+  an absolute path.
+- The browser receives only workspace-relative paths, file/directory kind, and
+  minimal display metadata. Host absolute paths and file contents do not cross
+  the boundary.
+- Directory depth and candidate-count caps prevent an unbounded workspace walk.
+- Absolute paths, empty paths, NUL characters, and paths escaping the workspace
+  are rejected.
+- Symlinks pointing outside the workspace are excluded from indexing, and path
+  resolution checks the real path again.
+- The Host exposes same-origin JSON endpoints for candidates and path
+  resolution; it does not expose file contents.
+
+## Installation
+
+The compatibility baseline is DSH `0.1.0-rc.6` or a compatible DSH web
+profile. Install through the DSH profile plugin flow:
+
+```bash
+dsh plugin --profile web add dsh-input-plus
+```
+
+Replace `web` with another profile name when needed. Restart the DSH web
+profile after installation or update so both the Host bundle and browser
+Client bundle are reloaded.
+
+This is a bundle plugin. Do not copy the source into the DSH Harness checkout
+or add a separate browser injection script. `cordis.patch.yml` mounts the Host
+half, and `package.json` declares the Web Client half through `dsh.client`.
+
+## Configuration
+
+The settings namespace is `input-plus`:
+
+| Option | Default | Range | Description |
+|---|---:|---:|---|
+| `maxIndexDepth` | `3` | `0–10` | Maximum directory depth for workspace indexing |
+| `maxIndexEntries` | `200` | `1–2000` | Maximum indexed entries returned to the picker |
+| `referenceRoot` | `''` | absolute path or empty | Overrides the active Session workspace |
+
+These limits apply to path indexing only. Directories are not expanded and
+files are not read when a message is sent, so this version has no
+`maxFileBytes`, `maxTotalBytes`, or directory-content injection mode.
+
+## Compatibility and extension surfaces
+
+The plugin is currently verified against DSH `0.1.0-rc.6` and uses these
+official extension surfaces:
+
+- `ctx.inputTriggers` for the `@` file source;
+- `ctx.inputTriggers` for the `/` history source;
+- `ctx.settings` for the `input-plus` settings namespace;
+- `ctx.webServer` for candidate and path-resolution routes;
+- `conversation.input` and `sessions` for current-Session submission wiring;
+- `conversation.composer.dock` for the read-only status line.
+
+The official textarea, send button, candidate menu, and keyboard arbitration
+remain DSH-owned. The plugin does not install a global keyboard listener and
+does not occupy the single `conversation.composer.bar` seat.
 
 ## Development
+
+Requirements: Node.js 18+ and pnpm.
 
 ```bash
 pnpm install
 
-# typecheck
+# TypeScript checks
 pnpm run typecheck
 
-# run the unit-test suite (privilege-safe: no subprocess spawns)
+# In-process test suite
 pnpm test
 
-# build Host (`lib/`) + client bundle (`lib/client.js`)
+# Build the Host and browser bundles
 pnpm run build
+
+# Verify that lib/client.js is synchronized with the source
+pnpm run check:client
 ```
 
-- Host build: `tsc -p tsconfig.build.json` (pure, in-process).
-- Client build: `scripts/build-client.mjs` — an in-process bundler built on
-  the TypeScript compiler API. It deliberately avoids esbuild so it works in
-  sandboxed/no-spawn environments (esbuild's service worker needs an IPC pipe).
+The build has two parts:
 
-### Why no esbuild?
-
-esbuild spawns a native service worker over an IPC pipe, which DSH's file
-sandbox blocks (`EPERM`). The client graph is self-contained (every DSH
-service is reached through the injected `ctx`; DSH package imports are
-type-only and erased), so a small deterministic in-process bundler is both
-sufficient and sandbox-friendly.
+- `tsc -p tsconfig.build.json` emits the Host code and declarations;
+- `scripts/build-client.mjs` uses the TypeScript Compiler API to generate
+  `lib/client.js` in-process, avoiding an esbuild service subprocess.
 
 ## Repository layout
 
-```
+```text
 src/
-  index.ts          Host half: settings + HTTP routes + agent/pre-step injection
-  contract.ts       Shared wire contract (session id, refs, envelopes, limits)
-  host/             Path safety, mention scanning, injection, settings, workspace
-  client/           Browser half: @ source, bridge, find ranking, keyboard/history machines
-  test/harness.ts   In-process test harness (node:test spawns a child per file — avoided)
+  index.ts            Host plugin entry, settings, and HTTP routes
+  contract.ts         Minimal Host/Client wire contract
+  host/
+    files.ts          Workspace indexing, ranking, and path safety
+    git.ts            Git modification state
+    settings.ts       Settings schema and defaults
+    workspace.ts      Session workspace resolution
+  client/
+    index.ts          Browser plugin entry
+    input-source.ts   @ candidate source and path write-back
+    history-source.ts /h and /history source and menu styles
+    history-recorder.ts Current Session prompt recording
+    find.ts           Client candidate matching and ranking
+    file-icons.ts     Candidate icons
+    input-status.ts   Composer status dock
 scripts/
-  build-client.mjs  In-process client bundler (TS compiler API)
-  test-runner.ts    Test graph runner
-research/ wayfinder/ .scratch/   Planning, official-surface research, implementation tickets
+  build-client.mjs    Browser bundle builder
+  test-runner.ts      In-process test entry
 ```
-
-## Compatibility
-
-- Verified baseline: **DSH `0.1.0-rc.6`** (npm/npx runtime). Observed
-  extension seams: `ctx.inputTriggers` (additive), `ctx.settings`,
-  `ctx.webServer`, `agent/pre-step`.
-- **Verified in a real installed profile + WebUI:** the bundle loads both
-  halves through the DSH bundle/profile path (`dsh plugin add <pkg>` →
-  `dsh.profile.bundles`); the Web client bundle is served
-  (`/plugins/dsh-input-plus/client.js`, 200) and its `@` source registers
-  through `ctx.inputTriggers` and lists workspace candidates (registration
-  confirmed via the client console log). This is what was previously the open
-  integration gate, and it is now exercised for the `@` feature.
-- **Not yet end-to-end verified:** the `agent/pre-step` reference injection
-  against a live send (compiled + unit-tested, but not yet asserted against a
-  real turn on the verified host), and the input-history / double-Escape
-  keyboard behaviors (seam-gated — see below).
-- The rc.6 composer keyboard seam is single-seat; input-history/double-Escape
-  therefore degrade (with a diagnostic) rather than replace the composer.
 
 ## License
 
-[MIT](./LICENSE)
+MIT

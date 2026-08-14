@@ -13,6 +13,11 @@ lib/
 *.log
 npm-debug.log*
 
+# Local development notes — intentionally not tracked
+CHANGELOG.md
+CONTEXT.md
+UPDATE_LOG.md
+
 # Editor / OS
 .DS_Store
 Thumbs.db

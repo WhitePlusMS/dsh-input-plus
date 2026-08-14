@@ -20,21 +20,8 @@ export interface FileCandidate {
   readonly kind: RefKind
   /** Optional single-line label for the candidate menu (defaults to `relative`). */
   readonly label?: string
-}
-
-/**
- * Result of resolving one reference at send time. The Client asks for a
- * candidate list, but the Host alone decides whether a given token is a real,
- * safe, in-workspace reference and how it serializes.
- */
-export interface ResolveReferenceResult {
-  readonly ok: boolean
-  /** Structured error code (see {@link RefErrorCode}); only present when `ok` is false. */
-  readonly error?: RefErrorCode
-  /** Human-readable, actionable message (never contains absolute paths or content). */
-  readonly message?: string
-  /** Number of injection blocks produced (file → 1, directory → manifest blocks). */
-  readonly blocks?: number
+  /** True when Git currently reports the path as changed in this workspace. */
+  readonly modified?: boolean
 }
 
 /**
@@ -53,22 +40,9 @@ export type RefErrorCode =
   | 'NOT_FOUND'
   | 'OUT_OF_BOUNDS'
   | 'SYMLINK'
-  | 'NOT_TEXT'
-  | 'TOO_LARGE'
-  | 'DIR_TOO_LARGE'
   | 'PERMISSION'
   | 'CANCELLED'
   | 'UNKNOWN'
-
-/** Semantic constants for the input-history feature (frozen in wayfinder/tickets/02). */
-export const HISTORY_LIMIT = 50
-export const DOUBLE_ESCAPE_WINDOW_MS = 600
-export const HISTORY_ALIAS_SEQUENCE = Object.freeze({
-  up: 'ArrowUp',
-  down: 'ArrowDown',
-  altUp: 'ctrl-p',
-  altDown: 'ctrl-n',
-})
 
 /**
  * Same-origin HTTP route prefix shared by the Host (webServer) and the
@@ -88,7 +62,7 @@ export interface CandidatesEnvelope {
   readonly error?: string
 }
 
-/** One resolution (used by the Client only for display feedback; Host re-checks at pre-step). */
+/** One path-validation response used by the optional resolve route. */
 export interface ResolveEnvelope {
   readonly ok: boolean
   readonly error?: string

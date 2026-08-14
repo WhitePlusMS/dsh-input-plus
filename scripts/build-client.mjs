@@ -6,9 +6,9 @@
 // IPC pipe, which the DSH file sandbox blocks (EPERM). This bundler instead
 // uses the TypeScript compiler API (pure JS, no subprocess) to transpile the
 // self-contained client module graph to CommonJS and inline it into a single
-// factory. The client graph has zero runtime external imports (every DSH
-// service is reached through the injected `ctx`; DSH package imports are
-// type-only and erased), so no external module edges exist.
+// factory. DSH services are reached through the injected `ctx`; the small
+// number of runtime host dependencies (currently React for additive slot
+// components) are passed through to the outer ModuleLoader resolver.
 //
 // Usage:
 //   node scripts/build-client.mjs          # write lib/client.js
@@ -149,6 +149,7 @@ export function generate({ check = false } = {}) {
       factories.join(',\n'),
       `    ];`,
       `    function __r(id) {`,
+      `      if (typeof id !== 'number') return require(id);`,
       `      if (cache[id]) return cache[id].exports;`,
       `      var module = { exports: {} };`,
       `      cache[id] = module;`,

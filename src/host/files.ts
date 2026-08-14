@@ -1,5 +1,5 @@
 /**
- * Host-side workspace index, path safety, and bounded file reading.
+ * Host-side workspace index and path safety.
  *
  * Security model (research/dsh-input-plus-file-reference.md):
  * - The Client only ever receives `relative` paths + kind; it never sees
@@ -9,18 +9,16 @@
  *   relative-boundary check.
  * - Absolute paths, `..` escape out of the workspace, and symlink targets
  *   outside the workspace are rejected by default.
- * - Reads are bounded: per-file byte cap, directory manifest total cap, and
- *   index entry cap.
+ * - Candidate indexing is bounded by the entry and depth caps.
  *
  * Zero DSH dependencies: this module takes the workspace root as a plain
  * string and uses only Node fs, so it is fully unit-testable in isolation.
  */
 
 import { promises as fs } from 'node:fs'
-import { basename, join, relative, resolve, sep } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import type { FileCandidate, RefErrorCode } from '../contract.js'
 
-export const DIR_MANIFEST_FILENAME = 'DIRECTORY.md'
 export const DEFAULT_IGNORED = new Set([
   // VCS / harness
   '.git', '.dsh', '.dsh-home', '.svn', '.hg',
@@ -29,22 +27,27 @@ export const DEFAULT_IGNORED = new Set([
   // build / test / coverage output
   'dist', 'build', 'out', 'coverage', '.out-test', '.turbo', '.nx', '.cache',
   // editor / OS artifacts
-  '.idea', '.vscode', '.DS_Store', 'Thumbs.db',
+  '.idea', '.vscode',
+])
+
+/** OS/editor metadata files ignored by basename, case-insensitively. */
+export const DEFAULT_IGNORED_FILES = new Set([
+  '.ds_store',
+  'desktop.ini',
+  'thumbs.db',
 ])
 
 export interface WorkspaceIndexOptions {
   /** Absolute workspace root. */
   readonly root: string
-  /** Max bytes for a single referenced text file. */
-  readonly maxFileBytes: number
-  /** Max total bytes for a directory manifest. */
-  readonly maxDirBytes: number
   /** Max index entries served as candidates per query. */
   readonly maxIndexEntries: number
   /** Directory scan depth limit. */
   readonly maxDepth: number
   /** Directories to skip entirely (basenames). */
   readonly ignored?: ReadonlySet<string>
+  /** Files to skip by basename; values are compared case-insensitively. */
+  readonly ignoredFiles?: ReadonlySet<string>
   /** Optional override for testing path semantics. */
   readonly sepOverride?: string
 }
@@ -169,32 +172,17 @@ function toRelative(root: string, absolute: string): string {
   return r.split(sep).join('/')
 }
 
-const TEXT_EXTENSIONS = new Set([
-  'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'json', 'md', 'mdx',
-  'txt', 'yml', 'yaml', 'toml', 'ini', 'cfg', 'conf', 'csv', 'tsv',
-  'html', 'htm', 'css', 'scss', 'less', 'sql', 'sh', 'bash', 'zsh',
-  'py', 'rb', 'java', 'go', 'rs', 'c', 'cpp', 'h', 'hpp', 'cs', 'php',
-  'vue', 'svelte', 'env', 'gitignore', 'log', 'text', 'xml', 'svg',
-])
-
-/** Is the file likely to be safe, bounded text (by extension + size guard)? */
-export function isTextish(fileName: string): boolean {
-  const name = basename(fileName)
-  const dot = name.lastIndexOf('.')
-  if (dot < 0) return false
-  const ext = name.slice(dot + 1).toLowerCase()
-  return TEXT_EXTENSIONS.has(ext)
-}
-
 /**
  * Build a snapshot candidate index of the workspace.
  *
- * Skips ignored directories, enforces depth and entry caps, resolves symlinks
- * to verify containment (a symlink leaving the workspace is dropped rather
- * than served), and returns distinguishable `file` / `dir` candidates.
+ * Skips ignored directories and metadata files, enforces depth and entry caps,
+ * resolves symlinks to verify containment (a symlink leaving the workspace is
+ * dropped rather than served), and returns distinguishable `file` / `dir`
+ * candidates.
  */
 export async function indexWorkspace(opts: WorkspaceIndexOptions): Promise<FileCandidate[]> {
   const ignored = opts.ignored ?? DEFAULT_IGNORED
+  const ignoredFiles = opts.ignoredFiles ?? DEFAULT_IGNORED_FILES
   const out: FileCandidate[] = []
   const seen = new Set<string>()
   const root = normalizeRoot(opts.root)
@@ -210,7 +198,7 @@ export async function indexWorkspace(opts: WorkspaceIndexOptions): Promise<FileC
     for (const entry of entries) {
       if (out.length >= opts.maxIndexEntries) return
       const name = entry.name
-      if (ignored.has(name)) continue
+      if (ignored.has(name) || ignoredFiles.has(name.toLowerCase())) continue
       const abs = join(dirAbs, name)
       const rel = toRelative(root, abs)
       // Symlink: resolve and only include when the real target stays inside.
@@ -249,24 +237,68 @@ export async function indexWorkspace(opts: WorkspaceIndexOptions): Promise<FileC
   return out.slice(0, opts.maxIndexEntries)
 }
 
+/**
+ * Score a candidate `relative` path against a `@query`, or return `null` when
+ * it does not match. Lower is better.
+ *
+ * Semantics (aligned with the community `dsh-at-file` improvements):
+ * - Empty query: matches everything (`0`), so ordering is purely the caller's tiebreak.
+ * - Plain query (no `/`): **filename-centric** — prefer the last path segment
+ *   prefix, then filename substring, then any-segment prefix, then a whole-path
+ *   substring as a low fallback. Matching the *filename* (not scattered path
+ *   characters) is what prevents unrelated hits like `src/draw/…` for `ra`.
+ * - Path query (contains `/`): the `/`-separated query segments must match
+ *   path segments **in order, as a prefix block**; a block at the path start
+ *   scores better than one deeper. A trailing slash (`src/`) matches the `src`
+ *   directory itself and everything under it.
+ */
+export function matchScore(rel: string, query: string): number | null {
+  const q = query.toLowerCase()
+  if (q === '') return 0
+  const lower = rel.toLowerCase()
+  if (!q.includes('/')) {
+    const base = lower.slice(lower.lastIndexOf('/') + 1)
+    if (base === q) return 0
+    if (base.startsWith(q)) return 1
+    if (base.includes(q)) return 2
+    if (lower.split('/').some((seg) => seg.startsWith(q))) return 3
+    if (lower.includes(q)) return 4
+    return null
+  }
+  const qSeg = q.split('/').filter((s) => s !== '')
+  const relSeg = lower.split('/')
+  for (let j = 0; j + qSeg.length <= relSeg.length; j++) {
+    let ok = true
+    for (let k = 0; k < qSeg.length; k++) {
+      const relPart = relSeg[j + k]
+      const queryPart = qSeg[k]
+      if (relPart === undefined || queryPart === undefined || !relPart.startsWith(queryPart)) {
+        ok = false
+        break
+      }
+    }
+    if (ok) return j === 0 ? 1 : 2
+  }
+  return null
+}
+
 /** Filter + rank candidates for a `@query` (prefix/substring match, exact first). */
 export function searchCandidates(index: readonly FileCandidate[], query: string, limit: number): FileCandidate[] {
   const q = query.toLowerCase()
   // token-agnostic match: prefix of any segment OR substring of the full path
   const scored = index
     .map((c) => {
-      const lower = c.relative.toLowerCase()
-      let score = -1
-      if (q === '' || lower.startsWith(q)) score = 0
-      else if (lower.includes(q)) score = 1
-      else if (c.relative.split('/').some((seg) => seg.toLowerCase().startsWith(q))) score = 2
-      else return null
+      const score = matchScore(c.relative, q)
+      if (score === null) return null
       return { c, score }
     })
     .filter((x): x is { c: FileCandidate; score: number } => x !== null)
     .sort((a, b) => {
       // Rank by match score first.
       if (a.score !== b.score) return a.score - b.score
+      const aModified = a.c.modified === true
+      const bModified = b.c.modified === true
+      if (aModified !== bModified) return aModified ? -1 : 1
       // At equal score prefer shallow over deep, and non-hidden over dot-prefixed
       // (dot files / caches crowded out normal files on an empty query).
       const aRel = a.c.relative
@@ -282,27 +314,4 @@ export function searchCandidates(index: readonly FileCandidate[], query: string,
     .slice(0, limit)
     .map((x) => x.c)
   return scored
-}
-
-/**
- * Read a validated text file with a hard byte budget, re-checking the size
- * after stat (avoids the stat/read race where the file grows between the two).
- */
-export async function readTextBounded(abs: string, maxBytes: number): Promise<string> {
-  let stats
-  try {
-    stats = await fs.stat(abs)
-  } catch {
-    throw new UnsupportedReferenceError('NOT_FOUND', 'File not found while reading')
-  }
-  if (!stats.isFile()) throw new UnsupportedReferenceError('NOT_TEXT', 'Not a regular file')
-  if (!isTextish(abs)) throw new UnsupportedReferenceError('NOT_TEXT', 'File type unsupported for text injection')
-  if (stats.size > maxBytes) {
-    throw new UnsupportedReferenceError('TOO_LARGE', `File exceeds ${maxBytes} byte limit`)
-  }
-  const data = await fs.readFile(abs, 'utf8')
-  if (Buffer.byteLength(data, 'utf8') > maxBytes) {
-    throw new UnsupportedReferenceError('TOO_LARGE', `File grew past ${maxBytes} byte limit`)
-  }
-  return data
 }

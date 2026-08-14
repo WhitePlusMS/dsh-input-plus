@@ -10,8 +10,6 @@ import {
   UnsupportedReferenceError,
   indexWorkspace,
   searchCandidates,
-  readTextBounded,
-  isTextish,
   type WorkspaceIndexOptions,
 } from './files.js'
 
@@ -23,8 +21,6 @@ async function scratch() {
 
 const opts: WorkspaceIndexOptions = {
   root: '',
-  maxFileBytes: 1024 * 1024,
-  maxDirBytes: 64 * 1024,
   maxIndexEntries: 1000,
   maxDepth: 4,
 }
@@ -96,33 +92,13 @@ test('resolveReference rejects a symlink escaping the workspace', async () => {
   }
 })
 
-test('readTextBounded enforces type and size limits', async () => {
-  const dir = await scratch()
-  const bin = join(dir, 'image.png')
-  await fs.writeFile(bin, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
-  await assert.rejects(readTextBounded(bin, 1024), (e: unknown) =>
-    e instanceof UnsupportedReferenceError && e.code === 'NOT_TEXT')
-  const txt = join(dir, 'big.txt')
-  await fs.writeFile(txt, 'x'.repeat(200))
-  await assert.rejects(readTextBounded(txt, 100), (e: unknown) =>
-    e instanceof UnsupportedReferenceError && e.code === 'TOO_LARGE')
-  assert.equal(await readTextBounded(txt, 500), 'x'.repeat(200))
-  await fs.rm(dir, { recursive: true, force: true })
-})
-
-test('isTextish distinguishes text extensions', () => {
-  assert.ok(isTextish('a.ts'))
-  assert.ok(isTextish('a.md'))
-  assert.ok(!isTextish('a.png'))
-  assert.ok(!isTextish('a.exe'))
-  assert.ok(!isTextish('README')) // no extension
-})
-
 test('indexWorkspace lists files and dirs, skipping ignored dirs', async () => {
   const dir = await scratch()
   await fs.mkdir(join(dir, 'src'), { recursive: true })
   await fs.mkdir(join(dir, 'node_modules'), { recursive: true })
   await fs.writeFile(join(dir, 'README.md'), '# hi')
+  await fs.writeFile(join(dir, 'desktop.ini'), '[.ShellClassInfo]')
+  await fs.writeFile(join(dir, 'thumbs.DB'), 'metadata')
   await fs.writeFile(join(dir, 'src', 'main.ts'), 'export {}')
   await fs.writeFile(join(dir, 'node_modules', 'x.js'), 'x')
   const idx = await indexWorkspace({ ...opts, root: dir })
@@ -139,6 +115,15 @@ test('searchCandidates ranks by prefix then substring', async () => {
   ]
   const out = searchCandidates(idx, 'src', 10)
   assert.equal(out[0]?.relative, 'src/main.ts')
+})
+
+test('searchCandidates prioritizes an exact directory name over a path prefix', () => {
+  const idx = [
+    { relative: 'src/main.ts', kind: 'file' as const },
+    { relative: 'packages/src', kind: 'dir' as const },
+  ]
+  const out = searchCandidates(idx, 'src', 10)
+  assert.deepEqual(out.map((c) => c.relative), ['packages/src', 'src/main.ts'])
 })
 
 test('normalizeRoot resolves relative roots to absolute', () => {

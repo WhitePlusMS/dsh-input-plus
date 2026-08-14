@@ -1,7 +1,7 @@
 {
   "name": "dsh-input-plus",
   "version": "0.1.0",
-  "description": "DSH 输入框强化 (DSH Input+): @ file/directory reference, session input history, and double-Escape draft clear for the DeepSeek Harness Web UI.",
+  "description": "DSH 输入框强化 (DSH Input+): @ file/directory reference and native composer status for the DeepSeek Harness Web UI.",
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -9,7 +9,6 @@
     "deepseek-harness",
     "web-ui",
     "input-enhancement",
-    "keyboard-shortcuts",
     "file-reference",
     "dsh-plugin"
   ],
@@ -30,6 +29,7 @@
     "lib",
     "cordis.patch.yml",
     "README.md",
+    "README-ZH.md",
     "LICENSE"
   ],
   "scripts": {
@@ -45,10 +45,12 @@
     "@deepseek-ai/schemastery": "^3.18.0"
   },
   "peerDependencies": {
+    "react": "^18.2.0",
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-input-trigger": "^0.1.0-rc.6"
+    "@deepseek-ai/dsh-client-ui-input-trigger": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.6"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -56,6 +58,7 @@
     "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-input-trigger": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
@@ -71,7 +74,9 @@
     "client": {
       "platform": "web",
       "inject": [
-        "inputTriggers"
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-input-trigger"
       ]
     }
   }

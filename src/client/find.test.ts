@@ -35,6 +35,15 @@ test('segment prefix matches directory segments', () => {
   assert.ok(out.some((c) => c.relative === 'docs/guide.md'))
 })
 
+test('exact directory name outranks a file whose path starts with the query', () => {
+  const candidates = [
+    { relative: 'src/main.ts', kind: 'file' as const },
+    { relative: 'packages/src', kind: 'dir' as const },
+  ]
+  const out = rankFileCandidates(candidates, 'src')
+  assert.deepEqual(out.map((c) => c.relative), ['packages/src', 'src/main.ts'])
+})
+
 test('no match returns empty', () => {
   assert.equal(rankFileCandidates(CANDIDATES, 'zzz-not-here').length, 0)
 })
@@ -42,4 +51,14 @@ test('no match returns empty', () => {
 test('limit caps the result set', () => {
   const out = rankFileCandidates(CANDIDATES, '', 2)
   assert.equal(out.length, 2)
+})
+
+test('recent and Git-modified files win equal query matches', () => {
+  const candidates = [
+    { relative: 'src/normal.ts', kind: 'file' as const },
+    { relative: 'src/changed.ts', kind: 'file' as const, modified: true },
+    { relative: 'src/recent.ts', kind: 'file' as const },
+  ]
+  const out = rankFileCandidates(candidates, 'src', 10, new Set(['src/recent.ts']))
+  assert.deepEqual(out.map((c) => c.relative), ['src/recent.ts', 'src/changed.ts', 'src/normal.ts'])
 })

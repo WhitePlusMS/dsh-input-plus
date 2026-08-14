@@ -10,11 +10,12 @@
 
 import { runAll } from '../src/test/harness.js'
 
-await import('../src/client/history.test.js')
-await import('../src/client/keyboard.test.js')
+await import('../src/client/index.test.js')
 await import('../src/host/files.test.js')
-await import('../src/host/mention.test.js')
 await import('../src/client/find.test.js')
+await import('../src/client/input-source.test.js')
+await import('../src/client/history-source.test.js')
+await import('../src/client/history-recorder.test.js')
 
 const { failed } = await runAll()
 process.exitCode = failed > 0 ? 1 : 0
