@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output (dist is published, not committed)
+dist/
+lib/
+.out-test/
+*.tgz
+.npm-cache/
+.pnpm-store/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Scratch planning (implementation tickets reference this, but it is local
+# working material, not release content)
+.scratch/

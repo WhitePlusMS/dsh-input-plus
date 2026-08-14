@@ -1,0 +1,9 @@
+# dsh-input-plus bundle patch: mount the plugin's Host half into a DSH
+# profile. The `id` is the plugin row identity; `name` resolves to this
+# package's Host entry (lib/index.js via package.json `main`/`exports["."]`).
+# The browser half is declared in package.json via `dsh.client` and mounted by
+# the client-modules kernel from the built lib/client.js bundle — no extra
+# row is needed here.
+- insert:
+    - id: dsh-input-plus
+      name: dsh-input-plus
