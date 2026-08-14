@@ -45,7 +45,7 @@ The candidates contain only user prompts that were successfully submitted in the
 Requires DSH `0.1.0-rc.6` or a compatible DSH Web profile. Install through the official DSH profile plugin flow:
 
 ```bash
-dsh plugin --profile web add https://github.com/WhitePlusMS/dsh-input-plus/archive/refs/tags/v0.0.1.tar.gz
+dsh plugin --profile web add https://github.com/WhitePlusMS/dsh-input-plus/archive/refs/tags/v0.0.2.tar.gz
 ```
 
 GitHub tag installation consumes the committed `lib/` Host and Client artifacts directly.
